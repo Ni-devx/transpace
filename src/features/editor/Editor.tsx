@@ -1,25 +1,19 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import MDEditor from '@uiw/react-md-editor'
 import { StorageAPI } from '@/core/api/storage'
 import { EventAPI } from '@/core/api/event'
-import { AI_API } from '@/core/api/ai'
 import SelectionToolbar from './SelectionToolbar'
-import RightPanel from './RightPanel'
 import type { Note } from '@/core/types/note'
 
 type Props = {
   noteId: string
 }
 
-type PanelState = {
-  mode: 'search' | 'ai'
-  query: string
-  hasContext: boolean
-} | null
-
 export default function Editor({ noteId }: Props) {
+  const router = useRouter()
   const [note, setNote] = useState<Note | null>(null)
   const [content, setContent] = useState('')
   const [title, setTitle] = useState('')
@@ -28,9 +22,6 @@ export default function Editor({ noteId }: Props) {
   // 選択テキスト・ツールバー
   const [selectedText, setSelectedText] = useState('')
   const [toolbarPos, setToolbarPos] = useState<{ x: number; y: number } | null>(null)
-
-  // 右パネル
-  const [panel, setPanel] = useState<PanelState>(null)
 
   // トップバーの入力
   const [topBarQuery, setTopBarQuery] = useState('')
@@ -96,7 +87,8 @@ useEffect(() => {
   const handleTopBarSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!topBarQuery.trim()) return
-    setPanel({ mode: topBarMode, query: topBarQuery, hasContext: false })
+    const q = encodeURIComponent(topBarQuery.trim())
+    router.push(topBarMode === 'search' ? `/search?q=${q}` : `/ai?q=${q}`)
     setToolbarPos(null)
   }
 
@@ -169,25 +161,17 @@ useEffect(() => {
           position={toolbarPos}
           selectedText={selectedText}
           onSearch={text => {
-            setPanel({ mode: 'search', query: text, hasContext: false })
+            const q = encodeURIComponent(text)
+            router.push(`/search?q=${q}`)
             setToolbarPos(null)
           }}
           onAI={text => {
-            setPanel({ mode: 'ai', query: text, hasContext: true })
+            const ctx = encodeURIComponent(text)
+            router.push(`/ai?context=${ctx}`)
             setToolbarPos(null)
           }}
         />
       )}
-
-      {/* 右パネル */}
-    {panel && (
-    <RightPanel
-        mode={panel.mode}
-        initialQuery={panel.query}
-        hasContext={panel.hasContext}
-        onClose={() => setPanel(null)}
-    />
-    )}
     </div>
   )
 }
