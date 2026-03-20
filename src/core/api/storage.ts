@@ -6,19 +6,18 @@ export const StorageAPI = {
   // ノート
   notes: {
     async getAll(folderId?: string | null): Promise<Note[]> {
-      const query = supabase
+    const query = supabase
         .from('notes')
         .select('*')
         .order('updated_at', { ascending: false })
 
-      const { data, error } = folderId === undefined
+    const { data, error } = (folderId === undefined || folderId === null)
         ? await query.is('folder_id', null)
         : await query.eq('folder_id', folderId)
 
-      if (error) throw error
-      return data
+    if (error) throw error
+    return data
     },
-
     async getById(id: string): Promise<Note> {
       const { data, error } = await supabase
         .from('notes')
@@ -69,17 +68,17 @@ export const StorageAPI = {
   // フォルダ
   folders: {
     async getAll(parentId?: string | null): Promise<Folder[]> {
-      const query = supabase
+    const query = supabase
         .from('folders')
         .select('*')
         .order('name')
 
-      const { data, error } = parentId === undefined
+    const { data, error } = (parentId === undefined || parentId === null)
         ? await query.is('parent_id', null)
         : await query.eq('parent_id', parentId)
 
-      if (error) throw error
-      return data
+    if (error) throw error
+    return data
     },
 
     async create(input: CreateFolderInput): Promise<Folder> {
