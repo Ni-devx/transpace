@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { AuthAPI } from '@/lib/auth'
 
-type Panel = 'notes' | 'search' | 'ai' | 'account' | null
+type Panel = 'notes' | 'search' | 'ai' | 'resources' | 'account' | null
 
 export default function ShellLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -31,9 +31,11 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
         ? 'search'
         : pathname === '/ai' || pathname.startsWith('/ai/')
           ? 'ai'
-          : pathname === '/account' || pathname.startsWith('/account/')
-            ? 'account'
-            : null
+          : pathname === '/resources' || pathname.startsWith('/resources/')
+            ? 'resources'
+            : pathname === '/account' || pathname.startsWith('/account/')
+              ? 'account'
+              : null
 
   return (
     <div className="flex h-screen bg-white">
@@ -67,6 +69,16 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 3v2m0 14v2m7-9h2M3 12H1m15.364-6.364l1.414-1.414M6.222 17.778l-1.414 1.414m12.728 0l-1.414-1.414M6.222 6.222L4.808 4.808" />
+          </svg>
+        </ActivityButton>
+
+        <ActivityButton
+          label="リソース"
+          active={activePanel === 'resources'}
+          onClick={() => router.push('/resources')}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h16M4 18h10" />
           </svg>
         </ActivityButton>
 
