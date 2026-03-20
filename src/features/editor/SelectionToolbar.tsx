@@ -10,6 +10,7 @@ type Props = {
 export default function SelectionToolbar({ position, selectedText, onSearch, onAI }: Props) {
   return (
     <div
+      data-selection-toolbar
       className="fixed z-50 flex items-center gap-1 bg-white border rounded-lg shadow-lg px-2 py-1"
       style={{ top: position.y - 48, left: position.x }}
     >

@@ -16,6 +16,7 @@ type Props = {
 type PanelState = {
   mode: 'search' | 'ai'
   query: string
+  hasContext: boolean
 } | null
 
 export default function Editor({ noteId }: Props) {
@@ -61,30 +62,41 @@ export default function Editor({ noteId }: Props) {
     return () => clearTimeout(timer)
   }, [content, title, save])
 
-  // テキスト選択の検知
-  const handleMouseUp = () => {
-    const selection = window.getSelection()
-    const text = selection?.toString().trim()
+useEffect(() => {
+  const handleMouseUp = (e: MouseEvent) => {
+    setTimeout(() => {
+      const selection = window.getSelection()
+      const text = selection?.toString().trim()
 
-    if (text && text.length > 0) {
-      const range = selection!.getRangeAt(0)
-      const rect = range.getBoundingClientRect()
-      setSelectedText(text)
-      setToolbarPos({
-        x: rect.left + rect.width / 2 - 60,
-        y: rect.top,
-      })
-    } else {
-      setToolbarPos(null)
-      setSelectedText('')
-    }
+      if (text && text.length > 0) {
+        const range = selection!.getRangeAt(0)
+        const rect = range.getBoundingClientRect()
+        setSelectedText(text)
+        setToolbarPos({
+          x: rect.left + rect.width / 2 - 60,
+          y: rect.top + window.scrollY,
+        })
+      }
+      // ツールバーのボタンクリック時はクリアしない
+      const target = e.target as HTMLElement
+      if (!target.closest('[data-selection-toolbar]')) {
+        if (!text || text.length === 0) {
+          setToolbarPos(null)
+          setSelectedText('')
+        }
+      }
+    }, 30)
   }
+
+  document.addEventListener('mouseup', handleMouseUp)
+  return () => document.removeEventListener('mouseup', handleMouseUp)
+}, [])
 
   // トップバーから開く
   const handleTopBarSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!topBarQuery.trim()) return
-    setPanel({ mode: topBarMode, query: topBarQuery })
+    setPanel({ mode: topBarMode, query: topBarQuery, hasContext: false })
     setToolbarPos(null)
   }
 
@@ -143,14 +155,12 @@ export default function Editor({ noteId }: Props) {
         </form>
 
         {/* エディタ本体 */}
-        <div className="flex-1 overflow-hidden" onMouseUp={handleMouseUp}>
           <MDEditor
             value={content}
             onChange={v => setContent(v ?? '')}
             height="100%"
             preview="live"
           />
-        </div>
       </div>
 
       {/* 選択ツールバー */}
@@ -159,24 +169,25 @@ export default function Editor({ noteId }: Props) {
           position={toolbarPos}
           selectedText={selectedText}
           onSearch={text => {
-            setPanel({ mode: 'search', query: text })
+            setPanel({ mode: 'search', query: text, hasContext: false })
             setToolbarPos(null)
           }}
           onAI={text => {
-            setPanel({ mode: 'ai', query: text })
+            setPanel({ mode: 'ai', query: text, hasContext: true })
             setToolbarPos(null)
           }}
         />
       )}
 
       {/* 右パネル */}
-      {panel && (
-        <RightPanel
-          mode={panel.mode}
-          initialQuery={panel.query}
-          onClose={() => setPanel(null)}
-        />
-      )}
+    {panel && (
+    <RightPanel
+        mode={panel.mode}
+        initialQuery={panel.query}
+        hasContext={panel.hasContext}
+        onClose={() => setPanel(null)}
+    />
+    )}
     </div>
   )
 }
