@@ -1,11 +1,10 @@
 'use client'
 
-import { useContext } from 'react'
-import { ShellContext } from '../layout'
+import { useNotesContext } from './notes-context'
 import Editor from '@/features/editor/Editor'
 
 export default function NotesPage() {
-  const { selectedNoteId } = useContext(ShellContext)
+  const { selectedNoteId } = useNotesContext()
 
   return (
     <>
