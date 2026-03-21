@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 16px;
+      margin: 0;
+      background: transparent;
+    }
+    .timer {
+      font-size: 48px;
+      font-weight: bold;
+      text-align: center;
+      margin: 16px 0;
+    }
+    .status {
+      text-align: center;
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 16px;
+    }
+    button {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #000;
+      background: #000;
+      color: #fff;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button.secondary {
+      background: #fff;
+      color: #000;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="status" id="status">集中モード</div>
+  <div class="timer" id="timer">25:00</div>
+  <button id="startBtn" onclick="toggle()">開始</button>
+  <button class="secondary" onclick="reset()">リセット</button>
+
+  <script>
+    let totalSeconds = 25 * 60
+    let remaining = totalSeconds
+    let running = false
+    let interval = null
+    let isBreak = false
+
+    function format(s) {
+      const m = Math.floor(s / 60)
+      const sec = s % 60
+      return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+    }
+
+    function update() {
+      document.getElementById('timer').textContent = format(remaining)
+    }
+
+    function toggle() {
+      if (running) {
+        clearInterval(interval)
+        running = false
+        document.getElementById('startBtn').textContent = '再開'
+        // コアにイベントを送る
+        window.parent.postMessage({
+          type: 'timer:paused',
+          extensionId: 'pomodoro-timer'
+        }, '*')
+      } else {
+        running = true
+        document.getElementById('startBtn').textContent = '一時停止'
+        window.parent.postMessage({
+          type: 'timer:started',
+          extensionId: 'pomodoro-timer',
+          duration: remaining
+        }, '*')
+        interval = setInterval(() => {
+          remaining--
+          update()
+          if (remaining <= 0) {
+            clearInterval(interval)
+            running = false
+            onComplete()
+          }
+        }, 1000)
+      }
+    }
+
+    function onComplete() {
+      isBreak = !isBreak
+      remaining = isBreak ? 5 * 60 : 25 * 60
+      document.getElementById('status').textContent =
+        isBreak ? '休憩モード' : '集中モード'
+      document.getElementById('startBtn').textContent = '開始'
+      update()
+      // コアに完了を通知
+      window.parent.postMessage({
+        type: 'timer:completed',
+        extensionId: 'pomodoro-timer',
+        isBreak
+      }, '*')
+    }
+
+    function reset() {
+      clearInterval(interval)
+      running = false
+      isBreak = false
+      remaining = 25 * 60
+      document.getElementById('status').textContent = '集中モード'
+      document.getElementById('startBtn').textContent = '開始'
+      update()
+    }
+
+    // コアからのメッセージを受け取る
+    window.addEventListener('message', (e) => {
+      if (e.data.type === 'core:ready') {
+        console.log('コアと接続完了')
+      }
+    })
+  </script>
+</body>
+</html>

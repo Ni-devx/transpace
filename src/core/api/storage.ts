@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import type { Note, Folder, CreateNoteInput, CreateFolderInput, Profile, Resource, CreateResourceInput } from '@/core/types/note'
+import type { ExtensionManifest } from '@/core/types/extension'
 export const StorageAPI = {
 
   // ノート
@@ -232,4 +233,113 @@ export const StorageAPI = {
       })
     },
   },
-}
+
+extensions: {
+  async getEnabled(): Promise<ExtensionManifest[]> {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return []
+
+    const { data, error } = await supabase
+      .from('user_extensions')
+      .select('manifest')
+      .eq('user_id', user.id)
+      .eq('enabled', true)
+
+    if (error) throw error
+    return (data ?? []).map(row => row.manifest as ExtensionManifest)
+  },
+
+  async install(manifest: ExtensionManifest): Promise<void> {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('認証が必要です')
+
+    const { error } = await supabase
+      .from('user_extensions')
+      .upsert({
+        user_id: user.id,
+        extension_id: manifest.id,
+        manifest,
+        enabled: true,
+      }, {
+        onConflict: 'user_id,extension_id',
+      })
+
+    if (error) throw error
+  },
+
+  async uninstall(extensionId: string): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('認証が必要です')
+
+  const { error } = await supabase
+    .from('user_extensions')
+    .delete()
+    .eq('user_id', user.id)
+    .eq('extension_id', extensionId)
+
+  if (error) throw error
+  },
+
+  async getAll(): Promise<ExtensionManifest[]> {
+    const { data, error } = await supabase
+      .from('extensions')
+      .select('*')
+      .order('install_count', { ascending: false })
+
+    if (error) throw error
+    return data.map(row => ({
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      version: row.version,
+      author: row.author,
+      permissions: row.permissions,
+      ui: row.ui,
+      entry: row.entry,
+      category: row.category,
+      install_count: row.install_count,
+    }))
+  },
+
+  async getByCategory(category: string): Promise<ExtensionManifest[]> {
+    const { data, error } = await supabase
+      .from('extensions')
+      .select('*')
+      .eq('category', category)
+      .order('install_count', { ascending: false })
+
+    if (error) throw error
+    return data.map(row => ({
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      version: row.version,
+      author: row.author,
+      permissions: row.permissions,
+      ui: row.ui,
+      entry: row.entry,
+      category: row.category,
+      install_count: row.install_count,
+    }))
+  },
+
+  async isInstalled(extensionId: string): Promise<boolean> {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return false
+
+    const { data } = await supabase
+      .from('user_extensions')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('extension_id', extensionId)
+      .single()
+
+    return !!data
+  },
+
+  async incrementInstallCount(extensionId: string): Promise<void> {
+    await supabase.rpc('increment_install_count', {
+      ext_id: extensionId
+    })
+  },
+}}

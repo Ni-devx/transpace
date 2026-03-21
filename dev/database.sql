@@ -133,3 +133,72 @@ create policy "resources objects delete (owner)"
   for delete
   to authenticated
   using (bucket_id = 'resources' and auth.uid() = owner);
+
+
+  ----
+
+  -- インストール済み拡張機能の管理
+create table user_extensions (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references auth.users(id) on delete cascade not null,
+  extension_id text not null,
+  manifest jsonb not null,
+  enabled boolean default true,
+  installed_at timestamptz default now(),
+  unique(user_id, extension_id)
+);
+
+alter table user_extensions enable row level security;
+
+create policy "自分の拡張機能だけ操作可能" on user_extensions
+  for all using (auth.uid() = user_id);
+
+
+-- 拡張機能カタログ（マーケットプレイス用）
+create table extensions (
+  id text primary key,  -- manifest.jsonのidと同じ
+  name text not null,
+  description text,
+  version text not null,
+  author text not null,
+  permissions text[] not null,
+  ui jsonb not null,
+  entry text not null,
+  category text not null default 'other',
+  install_count integer default 0,
+  created_at timestamptz default now() not null
+);
+
+-- RLSは読み取りを全員に許可（インストールはuser_extensionsで管理）
+alter table extensions enable row level security;
+
+create policy "全員が拡張機能を閲覧可能" on extensions
+  for select using (true);
+
+create policy "管理者のみ登録可能" on extensions
+  for insert with check (auth.uid() = 'xxxxxxxx');  -- ← 自分のUIDに変える
+
+-- ポモドーロを登録
+insert into extensions (id, name, description, version, author, permissions, ui, entry, category)
+values (
+  'pomodoro-timer',
+  'ポモドーロタイマー',
+  '25分集中・5分休憩のタイマー。学習セッションを自動記録します。',
+  '1.0.0',
+  'ni-devx',
+  array['timer', 'notification'],
+  '{"activityBar": {"icon": "🍅", "label": "ポモドーロ"}, "sidebarPanel": true}',
+  'index.html',
+  'productivity'
+);
+
+---
+
+create or replace function increment_install_count(ext_id text)
+returns void as $$
+begin
+  update extensions
+  set install_count = install_count + 1
+  where id = ext_id;
+end;
+$$ language plpgsql security definer;
