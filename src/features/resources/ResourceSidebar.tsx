@@ -63,7 +63,7 @@ export default function ResourceSidebar() {
   }
 
   return (
-    <div className="w-64 border-r flex flex-col h-full">
+    <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-3 py-2 border-b">
         <span className="text-sm font-bold">リソース</span>
         <div className="flex gap-1">

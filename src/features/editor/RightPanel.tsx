@@ -5,15 +5,22 @@ import MDEditor from '@uiw/react-md-editor'
 import remarkMath from 'remark-math'
 import rehypeMathjax from 'rehype-mathjax/browser'
 import { AI_API } from '@/core/api/ai'
+import ResizablePane from '@/features/shell/ResizablePane'
 
 type Mode = 'search' | 'ai'
+type Scope = 'selection' | 'note' | 'global'
 
 type Props = {
   mode: Mode
   initialQuery: string
   hasContext: boolean
   contextText?: string
+  contextLabel?: string
   initialPrompt?: string
+  scope?: Scope
+  systemPrompt?: string
+  disabled?: boolean
+  disabledReason?: string
   layout?: 'sidebar' | 'full'
   showClose?: boolean
   onClose?: () => void
@@ -29,7 +36,12 @@ export default function RightPanel({
   initialQuery,
   hasContext,
   contextText,
+  contextLabel,
   initialPrompt,
+  scope,
+  systemPrompt,
+  disabled = false,
+  disabledReason,
   layout = 'sidebar',
   showClose = true,
   onClose,
@@ -40,6 +52,7 @@ export default function RightPanel({
   const [loading, setLoading] = useState(false)
   const initialSent = useRef(false)
   const [mathjaxReady, setMathjaxReady] = useState(false)
+  const [panelWidth, setPanelWidth] = useState(320)
 
   useEffect(() => {
     setQuery(initialQuery)
@@ -112,6 +125,7 @@ export default function RightPanel({
   }
 
   const handleAI = async (promptOverride?: string) => {
+    if (disabled) return
     const prompt = (promptOverride ?? draft).trim()
     if (!prompt || loading) return
     setLoading(true)
@@ -122,8 +136,8 @@ export default function RightPanel({
     try {
       const context = buildContext(history)
       const res = context
-        ? await AI_API.ask(prompt, { context })
-        : await AI_API.ask(prompt)
+        ? await AI_API.ask(prompt, { context, systemPrompt })
+        : await AI_API.ask(prompt, { systemPrompt })
       setMessages(prev => [...prev, { role: 'ai', content: res.content }])
     } catch (e) {
       setMessages(prev => [
@@ -138,6 +152,7 @@ export default function RightPanel({
   // トップバーからの場合（hasContext: false）は即送信
   useEffect(() => {
     if (mode !== 'ai') return
+    if (disabled) return
     if (initialSent.current) return
     const preferred = initialPrompt?.trim()
     const fallback = !hasContext ? initialQuery.trim() : ''
@@ -146,20 +161,22 @@ export default function RightPanel({
       initialSent.current = true
       handleAI(initial)
     }
-  }, [mode, hasContext, initialQuery, initialPrompt])
+  }, [mode, hasContext, initialQuery, initialPrompt, disabled])
 
-  return (
-    <div
-      className={
-        layout === 'sidebar'
-          ? 'w-80 border-l flex flex-col bg-white h-full min-h-0'
-          : 'flex-1 min-h-0 flex flex-col bg-white'
-      }
-    >
+  const panelContent = (
+    <div className="flex flex-col h-full min-h-0">
       {/* ヘッダー */}
       <div className="flex items-center justify-between px-3 py-2 border-b">
         <span className="text-xs font-bold uppercase text-gray-400 tracking-wider">
-          {mode === 'search' ? '検索' : 'AI'}
+          {mode === 'search'
+            ? '検索'
+            : scope === 'selection'
+              ? 'AI（選択）'
+              : scope === 'note'
+                ? 'AI（ノート）'
+                : scope === 'global'
+                  ? 'AI（横断）'
+                  : 'AI'}
         </span>
         {showClose && onClose && (
           <button
@@ -216,12 +233,23 @@ export default function RightPanel({
         <div className="flex-1 min-h-0 flex flex-col">
           {hasContext && (
             <div className="px-3 py-2 border-b text-xs text-gray-500">
-              選択テキスト：
-              <span className="text-gray-700">「{(contextText ?? initialQuery).slice(0, 120)}{(contextText ?? initialQuery).length > 120 ? '...' : ''}」</span>
+              {contextLabel ? (
+                <span className="text-gray-700">{contextLabel}</span>
+              ) : (
+                <>
+                  選択テキスト：
+                  <span className="text-gray-700">「{(contextText ?? initialQuery).slice(0, 120)}{(contextText ?? initialQuery).length > 120 ? '...' : ''}」</span>
+                </>
+              )}
             </div>
           )}
 
           <div className="flex-1 min-h-0 overflow-y-auto p-3 flex flex-col gap-2">
+            {disabled && disabledReason && (
+              <div className="text-xs text-gray-400">
+                {disabledReason}
+              </div>
+            )}
             {messages.length === 0 && !loading && (
               <div className="text-xs text-gray-400">
                 AIに質問を送ると、ここに会話が表示されます。
@@ -260,8 +288,9 @@ export default function RightPanel({
               value={draft}
               onChange={e => setDraft(e.target.value)}
               placeholder="AIへの質問を入力..."
-              className="w-full border rounded px-2 py-1 text-sm outline-none focus:border-black resize-none"
+              className="w-full border rounded px-2 py-1 text-sm outline-none focus:border-black resize-none disabled:bg-gray-50"
               rows={3}
+              disabled={disabled}
               onKeyDown={e => {
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                   e.preventDefault()
@@ -271,7 +300,7 @@ export default function RightPanel({
             />
             <button
               onClick={() => handleAI()}
-              disabled={loading || !draft.trim()}
+              disabled={loading || disabled || !draft.trim()}
               className="w-full py-1.5 bg-black text-white text-sm rounded hover:bg-gray-800 disabled:bg-gray-300"
             >
               {loading ? '生成中...' : '送信（⌘/Ctrl+Enter）'}
@@ -279,6 +308,27 @@ export default function RightPanel({
           </div>
         </div>
       )}
+    </div>
+  )
+
+  if (layout === 'sidebar') {
+    return (
+      <ResizablePane
+        width={panelWidth}
+        onWidthChange={setPanelWidth}
+        minWidth={260}
+        maxWidth={560}
+        side="right"
+        className="border-l bg-white"
+      >
+        {panelContent}
+      </ResizablePane>
+    )
+  }
+
+  return (
+    <div className="flex-1 min-h-0 flex flex-col bg-white">
+      {panelContent}
     </div>
   )
 }

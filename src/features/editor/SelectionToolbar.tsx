@@ -5,9 +5,10 @@ type Props = {
   selectedText: string
   onSearch: (text: string) => void
   onAI: (text: string) => void
+  onQuickAsk: (text: string) => void
 }
 
-export default function SelectionToolbar({ position, selectedText, onSearch, onAI }: Props) {
+export default function SelectionToolbar({ position, selectedText, onSearch, onAI, onQuickAsk }: Props) {
   return (
     <div
       data-selection-toolbar
@@ -40,6 +41,16 @@ export default function SelectionToolbar({ position, selectedText, onSearch, onA
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.347.347a3.75 3.75 0 01-2.303 2.596A3.75 3.75 0 0112 20.25a3.75 3.75 0 01-1.768-.418 3.75 3.75 0 01-2.303-2.596l-.347-.347z" />
         </svg>
         AI
+      </button>
+      <button
+        onMouseDown={e => {
+          e.preventDefault()
+          onQuickAsk(selectedText)
+        }}
+        className="flex items-center gap-1 px-2 py-1 text-xs hover:bg-gray-100 rounded"
+        title="これは何？"
+      >
+        これは何？
       </button>
     </div>
   )

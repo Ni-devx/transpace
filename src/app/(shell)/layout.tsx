@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { AuthAPI } from '@/lib/auth'
+import { ShellUiContext } from './shell-ui-context'
 
 type Panel = 'notes' | 'search' | 'ai' | 'resources' | 'account' | null
 
@@ -10,6 +11,7 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const pathname = usePathname()
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   useEffect(() => {
     AuthAPI.getUser().then(user => {
@@ -37,15 +39,29 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
               ? 'account'
               : null
 
+  const handlePanelClick = (panel: Panel, href: string) => {
+    if (activePanel === panel) {
+      setSidebarCollapsed(prev => !prev)
+      return
+    }
+    setSidebarCollapsed(false)
+    router.push(href)
+  }
+
   return (
-    <div className="flex h-screen bg-white">
+    <ShellUiContext.Provider value={{
+      sidebarCollapsed,
+      setSidebarCollapsed,
+      toggleSidebar: () => setSidebarCollapsed(prev => !prev),
+    }}>
+      <div className="flex h-screen bg-white">
 
       {/* アクティビティバー */}
       <div className="flex flex-col items-center w-12 bg-gray-100 border-r py-2 gap-1">
         <ActivityButton
           label="ノート"
           active={activePanel === 'notes'}
-          onClick={() => router.push('/notes')}
+          onClick={() => handlePanelClick('notes', '/notes')}
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -55,7 +71,7 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
         <ActivityButton
           label="検索"
           active={activePanel === 'search'}
-          onClick={() => router.push('/search')}
+          onClick={() => handlePanelClick('search', '/search')}
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 4a7 7 0 100 14 7 7 0 000-14zm10 16l-4.35-4.35" />
@@ -65,7 +81,7 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
         <ActivityButton
           label="AI"
           active={activePanel === 'ai'}
-          onClick={() => router.push('/ai')}
+          onClick={() => handlePanelClick('ai', '/ai')}
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 3v2m0 14v2m7-9h2M3 12H1m15.364-6.364l1.414-1.414M6.222 17.778l-1.414 1.414m12.728 0l-1.414-1.414M6.222 6.222L4.808 4.808" />
@@ -75,7 +91,7 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
         <ActivityButton
           label="リソース"
           active={activePanel === 'resources'}
-          onClick={() => router.push('/resources')}
+          onClick={() => handlePanelClick('resources', '/resources')}
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h16M4 18h10" />
@@ -87,7 +103,7 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
         <ActivityButton
           label="アカウント"
           active={activePanel === 'account'}
-          onClick={() => router.push('/account')}
+          onClick={() => handlePanelClick('account', '/account')}
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -98,7 +114,8 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
       {/* サイドバー（各ページのlayoutが描画する） */}
       {children}
 
-    </div>
+      </div>
+    </ShellUiContext.Provider>
   )
 }
 

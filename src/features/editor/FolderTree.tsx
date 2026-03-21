@@ -128,7 +128,7 @@ export default function FolderTree({ onSelectNote, selectedNoteId }: Props) {
   }
 
   return (
-    <div className="flex flex-col h-full border-r w-64">
+    <div className="flex flex-col h-full">
       {/* ヘッダー */}
       <div className="flex items-center justify-between px-3 py-2 border-b">
         <span className="text-sm font-bold">Transpace</span>

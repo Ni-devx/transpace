@@ -17,6 +17,15 @@ export const StorageAPI = {
     if (error) throw error
     return data
     },
+    async getAllForUser(): Promise<Note[]> {
+      const { data, error } = await supabase
+        .from('notes')
+        .select('*')
+        .order('updated_at', { ascending: false })
+
+      if (error) throw error
+      return data
+    },
     async getById(id: string): Promise<Note> {
       const { data, error } = await supabase
         .from('notes')

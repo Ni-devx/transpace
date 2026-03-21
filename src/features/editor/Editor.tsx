@@ -1,21 +1,30 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
-import MDEditor from '@uiw/react-md-editor'
 import { StorageAPI } from '@/core/api/storage'
 import { EventAPI } from '@/core/api/event'
 import SelectionToolbar from './SelectionToolbar'
+import RightPanel from './RightPanel'
+import CanvasEditor from './CanvasEditor'
 import type { Note } from '@/core/types/note'
+import { canvasToPlainText, parseCanvasContent, serializeCanvasContent, type CanvasDoc } from './canvas/canvas-utils'
 
 type Props = {
   noteId: string
 }
 
+type PanelState = {
+  mode: 'search' | 'ai'
+  scope?: 'selection' | 'note'
+  initialQuery: string
+  initialPrompt?: string
+  hasContext: boolean
+  contextText?: string
+} | null
+
 export default function Editor({ noteId }: Props) {
-  const router = useRouter()
   const [note, setNote] = useState<Note | null>(null)
-  const [content, setContent] = useState('')
+  const [doc, setDoc] = useState<CanvasDoc | null>(null)
   const [title, setTitle] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -23,35 +32,45 @@ export default function Editor({ noteId }: Props) {
   const [selectedText, setSelectedText] = useState('')
   const [toolbarPos, setToolbarPos] = useState<{ x: number; y: number } | null>(null)
 
+  // 右パネル（選択/ノートAI・検索）
+  const [panel, setPanel] = useState<PanelState>(null)
+
   // トップバーの入力
   const [topBarQuery, setTopBarQuery] = useState('')
   const [topBarMode, setTopBarMode] = useState<'search' | 'ai'>('search')
+
+  const handleDocChange = (next: CanvasDoc | ((prev: CanvasDoc) => CanvasDoc)) => {
+    setDoc(prev => {
+      if (!prev) return prev
+      return typeof next === 'function' ? next(prev) : next
+    })
+  }
 
   // ノート取得
   useEffect(() => {
     StorageAPI.notes.getById(noteId).then(n => {
       setNote(n)
-      setContent(n.content_markdown)
+      setDoc(parseCanvasContent(n.content_markdown || ''))
       setTitle(n.title)
     })
   }, [noteId])
 
   // 自動保存
   const save = useCallback(async () => {
-    if (!note) return
+    if (!note || !doc) return
     setSaving(true)
     await StorageAPI.notes.update(note.id, {
       title,
-      content_markdown: content,
+      content_markdown: serializeCanvasContent(doc),
     })
     EventAPI.emit('note:saved', { noteId: note.id })
     setSaving(false)
-  }, [note, title, content])
+  }, [note, title, doc])
 
   useEffect(() => {
     const timer = setTimeout(save, 1000)
     return () => clearTimeout(timer)
-  }, [content, title, save])
+  }, [doc, title, save])
 
 useEffect(() => {
   const handleMouseUp = (e: MouseEvent) => {
@@ -83,16 +102,50 @@ useEffect(() => {
   return () => document.removeEventListener('mouseup', handleMouseUp)
 }, [])
 
+  const openSearchPanel = (query: string) => {
+    setPanel({
+      mode: 'search',
+      initialQuery: query,
+      hasContext: false,
+    })
+  }
+
+  const openSelectionAiPanel = (text: string, prompt?: string) => {
+    setPanel({
+      mode: 'ai',
+      scope: 'selection',
+      initialQuery: text,
+      initialPrompt: prompt,
+      hasContext: true,
+      contextText: text,
+    })
+  }
+
+  const openNoteAiPanel = (prompt: string) => {
+    const noteContext = `タイトル: ${title || '無題'}\n\n本文:\n${doc ? canvasToPlainText(doc) : ''}`
+    setPanel({
+      mode: 'ai',
+      scope: 'note',
+      initialQuery: prompt,
+      initialPrompt: prompt,
+      hasContext: true,
+      contextText: noteContext,
+    })
+  }
+
   // トップバーから開く
   const handleTopBarSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!topBarQuery.trim()) return
-    const q = encodeURIComponent(topBarQuery.trim())
-    router.push(topBarMode === 'search' ? `/search?q=${q}` : `/ai?q=${q}`)
+    if (topBarMode === 'search') {
+      openSearchPanel(topBarQuery.trim())
+    } else {
+      openNoteAiPanel(topBarQuery.trim())
+    }
     setToolbarPos(null)
   }
 
-  if (!note) return <div className="flex items-center justify-center h-full text-gray-400 text-sm">読み込み中...</div>
+  if (!note || !doc) return <div className="flex items-center justify-center h-full text-gray-400 text-sm">読み込み中...</div>
 
   return (
     <div className="flex h-full">
@@ -145,14 +198,47 @@ useEffect(() => {
             実行
           </button>
         </form>
+        {topBarMode === 'ai' && (
+          <div className="flex items-center gap-2 px-4 py-2 border-b bg-white text-xs">
+            <span className="text-gray-400">テンプレ:</span>
+            <button
+              type="button"
+              onClick={() => {
+                const prompt = 'このノートを要約して'
+                setTopBarQuery(prompt)
+                openNoteAiPanel(prompt)
+              }}
+              className="px-2 py-1 border rounded hover:bg-gray-50"
+            >
+              要約
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const prompt = 'このノートをもとに理解度チェック問題を3問作って'
+                setTopBarQuery(prompt)
+                openNoteAiPanel(prompt)
+              }}
+              className="px-2 py-1 border rounded hover:bg-gray-50"
+            >
+              問題作成
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const prompt = 'このノートの重要ポイントを箇条書きで整理して'
+                setTopBarQuery(prompt)
+                openNoteAiPanel(prompt)
+              }}
+              className="px-2 py-1 border rounded hover:bg-gray-50"
+            >
+              重要ポイント
+            </button>
+          </div>
+        )}
 
         {/* エディタ本体 */}
-          <MDEditor
-            value={content}
-            onChange={v => setContent(v ?? '')}
-            height="100%"
-            preview="live"
-          />
+        <CanvasEditor doc={doc} onChange={handleDocChange} />
       </div>
 
       {/* 選択ツールバー */}
@@ -161,15 +247,40 @@ useEffect(() => {
           position={toolbarPos}
           selectedText={selectedText}
           onSearch={text => {
-            const q = encodeURIComponent(text)
-            router.push(`/search?q=${q}`)
+            openSearchPanel(text)
             setToolbarPos(null)
           }}
           onAI={text => {
-            const ctx = encodeURIComponent(text)
-            router.push(`/ai?context=${ctx}`)
+            openSelectionAiPanel(text)
             setToolbarPos(null)
           }}
+          onQuickAsk={text => {
+            openSelectionAiPanel(text, 'これは何？')
+            setToolbarPos(null)
+          }}
+        />
+      )}
+
+      {/* 右パネル */}
+      {panel && (
+        <RightPanel
+          mode={panel.mode}
+          scope={panel.scope}
+          initialQuery={panel.initialQuery}
+          initialPrompt={panel.initialPrompt}
+          hasContext={panel.hasContext}
+          contextText={panel.contextText}
+          contextLabel={panel.scope === 'note' ? 'このノートの内容を参照しています' : undefined}
+          layout="sidebar"
+          showClose
+          onClose={() => setPanel(null)}
+          systemPrompt={
+            panel.scope === 'selection'
+              ? 'あなたは選択された語彙・文章の意味や背景を簡潔に説明する学習支援AIです。必要なら例も示してください。'
+              : panel.scope === 'note'
+                ? 'あなたはこのノートの内容に基づいて質問に答える学習支援AIです。ノート外の推測は控え、必要なら確認質問をしてください。'
+                : undefined
+          }
         />
       )}
     </div>
