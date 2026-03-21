@@ -88,16 +88,6 @@ export default function ShellLayout({ children }: { children: React.ReactNode })
           </svg>
         </ActivityButton>
 
-        <ActivityButton
-          label="リソース"
-          active={activePanel === 'resources'}
-          onClick={() => handlePanelClick('resources', '/resources')}
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h16M4 18h10" />
-          </svg>
-        </ActivityButton>
-
         <div className="flex-1" />
 
         <ActivityButton

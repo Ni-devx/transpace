@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import MDEditor from '@uiw/react-md-editor'
 import type { CanvasBlock, CanvasBlockType, CanvasDoc } from './canvas/canvas-utils'
 import { createBlock } from './canvas/canvas-utils'
 
@@ -43,8 +44,23 @@ export default function CanvasEditor({ doc, onChange }: Props) {
   const undoStackRef = useRef<CanvasDoc[]>([])
   const redoStackRef = useRef<CanvasDoc[]>([])
   const forceSyncRef = useRef(false)
+  const docRef = useRef(doc)
+  const activeIdRef = useRef(activeId)
+  const onChangeRef = useRef(onChange)
 
   const zoom = doc.canvas.zoom ?? 1
+
+  useEffect(() => {
+    docRef.current = doc
+  }, [doc])
+
+  useEffect(() => {
+    activeIdRef.current = activeId
+  }, [activeId])
+
+  useEffect(() => {
+    onChangeRef.current = onChange
+  }, [onChange])
 
   const pushHistory = (doc: CanvasDoc) => {
     undoStackRef.current.push(cloneDoc(doc))
@@ -83,6 +99,17 @@ export default function CanvasEditor({ doc, onChange }: Props) {
       ...prev,
       blocks: [...prev.blocks, block],
     }))
+  }
+
+  const deleteBlock = (id: string) => {
+    const index = doc.blocks.findIndex(b => b.id === id)
+    if (index === -1) return
+    const nextId = doc.blocks[index - 1]?.id ?? doc.blocks[index + 1]?.id ?? null
+    updateDoc(prev => ({
+      ...prev,
+      blocks: prev.blocks.filter(b => b.id !== id),
+    }))
+    setActiveId(nextId)
   }
 
   const changeBlockType = (id: string, type: CanvasBlockType) => {
@@ -136,61 +163,70 @@ export default function CanvasEditor({ doc, onChange }: Props) {
   }, [doc.blocks, activeId])
 
   useEffect(() => {
-    const sync = (force: boolean) => {
-      doc.blocks.forEach(block => {
-        if (block.type === 'text' || block.type === 'heading') {
-          const el = blockRefs.current[block.id]
-          if (!el) return
-          const isFocused = document.activeElement === el
-          if (isFocused && !force) return
-          const nextText = block.text ?? ''
-          if (el.innerText !== nextText) {
-            el.innerText = nextText
-          }
-        }
-      })
-    }
-    sync(forceSyncRef.current)
     forceSyncRef.current = false
   }, [doc.blocks])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const currentDoc = docRef.current
+      const currentActiveId = activeIdRef.current
+
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault()
         if (e.shiftKey) {
           const redo = redoStackRef.current.pop()
-          if (redo) {
-            undoStackRef.current.push(cloneDoc(doc))
+          if (redo && currentDoc) {
+            undoStackRef.current.push(cloneDoc(currentDoc))
             forceSyncRef.current = true
-            onChange(redo)
+            onChangeRef.current(redo)
           }
         } else {
           const undo = undoStackRef.current.pop()
-          if (undo) {
-            redoStackRef.current.push(cloneDoc(doc))
+          if (undo && currentDoc) {
+            redoStackRef.current.push(cloneDoc(currentDoc))
             forceSyncRef.current = true
-            onChange(undo)
+            onChangeRef.current(undo)
           }
         }
         return
       }
+
+      if (e.key === 'Backspace' || e.key === 'Delete') {
+        const target = e.target as HTMLElement
+        const isTyping = target?.isContentEditable || target?.tagName === 'TEXTAREA' || target?.tagName === 'INPUT'
+        if (!isTyping && currentActiveId && currentDoc) {
+          e.preventDefault()
+          pushHistory(currentDoc)
+          const index = currentDoc.blocks.findIndex(b => b.id === currentActiveId)
+          if (index === -1) return
+          const nextId = currentDoc.blocks[index - 1]?.id ?? currentDoc.blocks[index + 1]?.id ?? null
+          onChangeRef.current(prev => ({
+            ...prev,
+            blocks: prev.blocks.filter(b => b.id !== currentActiveId),
+          }))
+          setActiveId(nextId)
+          return
+        }
+      }
+
       if (e.code !== 'Space') return
       const target = e.target as HTMLElement
       const isTyping = target?.isContentEditable || target?.tagName === 'TEXTAREA' || target?.tagName === 'INPUT'
       if (isTyping) return
       setIsSpaceDown(true)
     }
+
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.code === 'Space') setIsSpaceDown(false)
     }
+
     window.addEventListener('keydown', handleKeyDown)
     window.addEventListener('keyup', handleKeyUp)
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
     }
-  }, [doc, onChange])
+  }, [])
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -262,6 +298,82 @@ export default function CanvasEditor({ doc, onChange }: Props) {
   }
 
   const renderBlockContent = (block: CanvasBlock) => {
+    if (block.type === 'text' || block.type === 'heading') {
+      const placeholder = block.type === 'heading' ? '見出し / Markdown' : 'テキスト / Markdown'
+      const previewRef = (el: HTMLDivElement | null) => {
+        if (!el) return
+        const nextHeight = Math.max(80, el.scrollHeight + 8)
+        if (nextHeight > block.h) {
+          updateBlock(block.id, { h: nextHeight }, { recordHistory: false })
+        }
+      }
+      return (
+        <div className="relative w-full h-full">
+          <div
+            ref={previewRef}
+            className="absolute inset-0 pointer-events-none text-sm leading-6 tp-md-preview"
+          >
+            {block.text ? (
+              <MDEditor.Markdown source={block.text} style={{ whiteSpace: 'pre-wrap' }} />
+            ) : (
+              <div className="text-gray-400">{placeholder}</div>
+            )}
+          </div>
+          <textarea
+            value={block.text ?? ''}
+            onFocus={() => {
+              pushHistory(doc)
+              setActiveId(block.id)
+            }}
+            onChange={e => {
+              const text = e.target.value
+              updateBlock(block.id, { text }, { recordHistory: false })
+              if (text.startsWith('/')) {
+                setSlashMenu({ blockId: block.id, query: text.slice(1).toLowerCase() })
+              } else if (slashMenu?.blockId === block.id) {
+                setSlashMenu(null)
+              }
+            }}
+            onKeyDown={e => {
+              if ((e.metaKey || e.ctrlKey) && e.altKey) {
+                if (e.key === '0') {
+                  e.preventDefault()
+                  changeBlockType(block.id, 'text')
+                }
+                if (e.key === '1') {
+                  e.preventDefault()
+                  changeBlockType(block.id, 'heading')
+                }
+                if (e.key === '2') {
+                  e.preventDefault()
+                  changeBlockType(block.id, 'code')
+                }
+                if (e.key === '3') {
+                  e.preventDefault()
+                  changeBlockType(block.id, 'image')
+                }
+              }
+              if (e.key === 'Backspace' && !(block.text ?? '').length) {
+                e.preventDefault()
+                deleteBlock(block.id)
+                return
+              }
+              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                e.preventDefault()
+                createBlockBelow(block)
+              }
+              if (e.altKey && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+                e.preventDefault()
+                const next = findNextBlock(block, e.key === 'ArrowDown' ? 'down' : 'up')
+                if (next) setActiveId(next.id)
+              }
+            }}
+            className="absolute inset-0 w-full h-full resize-none bg-transparent text-transparent caret-black outline-none text-sm leading-6"
+          />
+        </div>
+      )
+    }
+
     if (block.type === 'image') {
       const url = block.data?.url ?? ''
       return (
@@ -304,7 +416,17 @@ export default function CanvasEditor({ doc, onChange }: Props) {
       return (
         <textarea
           value={block.text ?? ''}
-          onChange={e => updateBlock(block.id, { text: e.target.value })}
+          onFocus={() => {
+            pushHistory(doc)
+            setActiveId(block.id)
+          }}
+          onChange={e => updateBlock(block.id, { text: e.target.value }, { recordHistory: false })}
+          onKeyDown={e => {
+            if (e.key === 'Backspace' && !(block.text ?? '').length) {
+              e.preventDefault()
+              deleteBlock(block.id)
+            }
+          }}
           className="w-full h-full resize-none bg-transparent outline-none text-sm font-mono"
           spellCheck={false}
         />
@@ -319,56 +441,6 @@ export default function CanvasEditor({ doc, onChange }: Props) {
       )
     }
 
-    const isHeading = block.type === 'heading'
-    return (
-      <div
-        ref={el => { blockRefs.current[block.id] = el }}
-        contentEditable
-        suppressContentEditableWarning
-        className={`w-full h-full outline-none ${isHeading ? 'text-2xl font-bold' : 'text-sm'}`}
-        data-placeholder={isHeading ? '見出し' : 'テキスト'}
-        onInput={e => {
-          const text = e.currentTarget.textContent ?? ''
-          const nextHeight = Math.max(block.h, e.currentTarget.scrollHeight + 8)
-          updateBlock(block.id, { text, h: nextHeight })
-          if (text.startsWith('/')) {
-            setSlashMenu({ blockId: block.id, query: text.slice(1).toLowerCase() })
-          } else if (slashMenu?.blockId === block.id) {
-            setSlashMenu(null)
-          }
-        }}
-        onKeyDown={e => {
-          if ((e.metaKey || e.ctrlKey) && e.altKey) {
-            if (e.key === '0') {
-              e.preventDefault()
-              changeBlockType(block.id, 'text')
-            }
-            if (e.key === '1') {
-              e.preventDefault()
-              changeBlockType(block.id, 'heading')
-            }
-            if (e.key === '2') {
-              e.preventDefault()
-              changeBlockType(block.id, 'code')
-            }
-            if (e.key === '3') {
-              e.preventDefault()
-              changeBlockType(block.id, 'image')
-            }
-          }
-          if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault()
-            createBlockBelow(block)
-          }
-          if (e.altKey && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
-            e.preventDefault()
-            const next = findNextBlock(block, e.key === 'ArrowDown' ? 'down' : 'up')
-            if (next) setActiveId(next.id)
-          }
-        }}
-        onFocus={() => setActiveId(block.id)}
-      />
-    )
   }
 
   const slashItems = useMemo(() => {
@@ -423,6 +495,13 @@ export default function CanvasEditor({ doc, onChange }: Props) {
                         <option value="image">画像</option>
                         <option value="drawing">描画</option>
                       </select>
+                      <button
+                        type="button"
+                        onClick={() => deleteBlock(block.id)}
+                        className="px-1 py-0.5 border rounded hover:bg-gray-50 text-red-500"
+                      >
+                        削除
+                      </button>
                       <span className="text-gray-400">⌘/Ctrl+Alt+0〜3</span>
                     </div>
                   )}

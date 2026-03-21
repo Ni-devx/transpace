@@ -29,3 +29,23 @@ body {
   content: attr(data-placeholder);
   color: #9ca3af;
 }
+
+.tp-md-preview h1,
+.tp-md-preview h2,
+.tp-md-preview h3 {
+  font-weight: 700;
+  font-size: 0.875rem;
+  line-height: 1.5rem;
+  margin: 0.25rem 0;
+}
+
+.tp-md-preview p,
+.tp-md-preview li {
+  line-height: 1.5rem;
+}
+
+.tp-md-preview ul,
+.tp-md-preview ol {
+  padding-left: 1.25rem;
+  margin: 0.25rem 0;
+}
